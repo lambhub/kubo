@@ -24,7 +24,7 @@ import (
 	config "github.com/ipfs/kubo/config"
 )
 
-var defaultPaths = []string{"/ipfs/", "/ipns/", "/api/", "/p2p/"}
+var defaultPaths = []string{"/lamb/", "/ipns/", "/api/", "/p2p/"}
 
 var subdomainGatewaySpec = &config.GatewaySpec{
 	Paths:         defaultPaths,
@@ -379,7 +379,7 @@ func isDNSLinkName(ctx context.Context, ipfs iface.CoreAPI, host string) bool {
 
 func isSubdomainNamespace(ns string) bool {
 	switch ns {
-	case "ipfs", "ipns", "p2p", "ipld":
+	case "ipfs", "ipns", "p2p", "ipld", "lamb":
 		return true
 	default:
 		return false

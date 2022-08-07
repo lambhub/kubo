@@ -59,7 +59,7 @@ func (api *CoreAPI) ResolvePath(ctx context.Context, p path.Path) (path.Resolved
 		return nil, err
 	}
 
-	if ipath.Segments()[0] != "ipfs" && ipath.Segments()[0] != "ipld" {
+	if ipath.Segments()[0] != "lamb" && ipath.Segments()[0] != "ipfs" && ipath.Segments()[0] != "ipld" {
 		return nil, fmt.Errorf("unsupported path namespace: %s", p.Namespace())
 	}
 

@@ -34,7 +34,8 @@ import (
 )
 
 const (
-	ipfsPathPrefix        = "/ipfs/"
+	ipfsPath              = "lamb"
+	ipfsPathPrefix        = "/lamb/"
 	ipnsPathPrefix        = "/ipns/"
 	immutableCacheControl = "public, max-age=29030400, immutable"
 )
@@ -273,7 +274,7 @@ func parseIpfsPath(p string) (cid.Cid, string, error) {
 
 	// Check the path.
 	rsegs := rootPath.Segments()
-	if rsegs[0] != "ipfs" {
+	if rsegs[0] != ipfsPath {
 		return cid.Cid{}, "", fmt.Errorf("WritableGateway: only ipfs paths supported")
 	}
 
@@ -1011,7 +1012,7 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 			webError(w, "failed to parse uri query parameter", err, http.StatusBadRequest)
 			return true
 		}
-		if u.Scheme != "ipfs" && u.Scheme != "ipns" {
+		if u.Scheme != ipfsPath && u.Scheme != "ipns" {
 			webError(w, "uri query parameter scheme must be ipfs or ipns", err, http.StatusBadRequest)
 			return true
 		}
@@ -1059,7 +1060,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	}
 
 	// Attempt to fix the superflous namespace
-	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/ipfs"))
+	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/lamb"))
 	if err := intendedPath.IsValid(); err != nil {
 		webError(w, "invalid ipfs path", err, http.StatusBadRequest)
 		return true

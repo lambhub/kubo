@@ -263,4 +263,6 @@ require (
 	lukechampine.com/blake3 v1.1.7 // indirect
 )
 
+replace github.com/ipfs/go-path v0.3.0 => github.com/lambhub/go-path v0.3.1-0.20220807113641-6f3ae4266446
+
 go 1.17
