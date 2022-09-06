@@ -4,7 +4,10 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"github.com/mitchellh/go-homedir"
 	"io"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/ipfs/interface-go-ipfs-core/options"
@@ -23,6 +26,14 @@ func Init(out io.Writer, nBitsForKeypair int) (*Config, error) {
 
 func InitWithIdentity(identity Identity) (*Config, error) {
 	bootstrapPeers, err := DefaultBootstrapPeers()
+	if err != nil {
+		return nil, err
+	}
+	ipfsPath := DefaultPathRoot
+	if os.Getenv(EnvDir) != "" {
+		ipfsPath = os.Getenv(EnvDir)
+	}
+	bestKnownPath, err := homedir.Expand(ipfsPath)
 	if err != nil {
 		return nil, err
 	}
@@ -94,6 +105,15 @@ func InitWithIdentity(identity Identity) (*Config, error) {
 		Migration: Migration{
 			DownloadSources: []string{},
 			Keep:            "",
+		},
+		Miner: Miner{
+			RemoteURL:    "http://18.143.13.243:8545",
+			Delay:        10,
+			Record:       filepath.Join(bestKnownPath, "miner-record"),
+			SealPath:     filepath.Join(bestKnownPath, "miner-seal"),
+			PrivateKey:   "9ef1ab2d179cf1ccef1826bfd14c9f3ba6f17910b891a2f04c7af178f306a731",
+			ContractAddr: "0x270299Bf2A8793EaA5597dfC2741C46C36E330da",
+			ChainID:      92001,
 		},
 	}
 

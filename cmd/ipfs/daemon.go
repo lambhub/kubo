@@ -643,7 +643,7 @@ func serveHTTPApi(req *cmds.Request, cctx *oldcmds.Context) (<-chan error, error
 	unrestricted, _ := req.Options[unrestrictedApiAccessKwd].(bool)
 	gatewayOpt := corehttp.GatewayOption(false, corehttp.WebUIPaths...)
 	if unrestricted {
-		gatewayOpt = corehttp.GatewayOption(true, "/lamb", "/ipns")
+		gatewayOpt = corehttp.GatewayOption(true, "/lws", "/ipns")
 	}
 
 	var opts = []corehttp.ServeOption{
@@ -783,7 +783,7 @@ func serveHTTPGateway(req *cmds.Request, cctx *oldcmds.Context) (<-chan error, e
 	var opts = []corehttp.ServeOption{
 		corehttp.MetricsCollectionOption("gateway"),
 		corehttp.HostnameOption(),
-		corehttp.GatewayOption(writable, "/lamb", "/ipns"),
+		corehttp.GatewayOption(writable, "/lws", "/ipns"),
 		corehttp.VersionOption(),
 		corehttp.CheckVersionOption(),
 		corehttp.CommandsROOption(cmdctx),

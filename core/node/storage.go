@@ -4,6 +4,7 @@ import (
 	"github.com/ipfs/go-datastore"
 	blockstore "github.com/ipfs/go-ipfs-blockstore"
 	config "github.com/ipfs/kubo/config"
+	"github.com/ipfs/kubo/core/miner"
 	"go.uber.org/fx"
 
 	"github.com/ipfs/go-filestore"
@@ -26,8 +27,8 @@ func Datastore(repo repo.Repo) datastore.Datastore {
 type BaseBlocks blockstore.Blockstore
 
 // BaseBlockstoreCtor creates cached blockstore backed by the provided datastore
-func BaseBlockstoreCtor(cacheOpts blockstore.CacheOpts, nilRepo bool, hashOnRead bool) func(mctx helpers.MetricsCtx, repo repo.Repo, lc fx.Lifecycle) (bs BaseBlocks, err error) {
-	return func(mctx helpers.MetricsCtx, repo repo.Repo, lc fx.Lifecycle) (bs BaseBlocks, err error) {
+func BaseBlockstoreCtor(cacheOpts blockstore.CacheOpts, nilRepo bool, cfg *config.Config) func(mctx helpers.MetricsCtx, repo repo.Repo, lc fx.Lifecycle) (bs BaseBlocks, m *miner.Miner, err error) {
+	return func(mctx helpers.MetricsCtx, repo repo.Repo, lc fx.Lifecycle) (bs BaseBlocks, m *miner.Miner, err error) {
 		// hash security
 		bs = blockstore.NewBlockstore(repo.Datastore())
 		bs = &verifbs.VerifBS{Blockstore: bs}
@@ -35,14 +36,19 @@ func BaseBlockstoreCtor(cacheOpts blockstore.CacheOpts, nilRepo bool, hashOnRead
 		if !nilRepo {
 			bs, err = blockstore.CachedBlockstore(helpers.LifecycleCtx(mctx, lc), bs, cacheOpts)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 		}
 
 		bs = blockstore.NewIdStore(bs)
 
-		if hashOnRead { // TODO: review: this is how it was done originally, is there a reason we can't just pass this directly?
+		if cfg.Datastore.HashOnRead { // TODO: review: this is how it was done originally, is there a reason we can't just pass this directly?
 			bs.HashOnRead(true)
+		}
+		m, err = miner.NewMiner(helpers.LifecycleCtx(mctx, lc), *cfg)
+		if err != nil {
+			logger.Errorf("while building miner: %s", err)
+			return nil, nil, err
 		}
 
 		return

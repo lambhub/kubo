@@ -34,8 +34,7 @@ import (
 )
 
 const (
-	ipfsPath              = "lamb"
-	ipfsPathPrefix        = "/lamb/"
+	ipfsPathPrefix        = "/lws/"
 	ipnsPathPrefix        = "/ipns/"
 	immutableCacheControl = "public, max-age=29030400, immutable"
 )
@@ -81,6 +80,8 @@ type gatewayHandler struct {
 	unixfsGenDirGetMetric *prometheus.HistogramVec
 	carStreamGetMetric    *prometheus.HistogramVec
 	rawBlockGetMetric     *prometheus.HistogramVec
+	// CIDs
+	//cids *util.CIDs
 }
 
 // StatusResponseWriter enables us to override HTTP Status Code passed to
@@ -262,6 +263,7 @@ func newGatewayHandler(c GatewayConfig, api coreiface.CoreAPI) (*gatewayHandler,
 			"unixfs_get_latency_seconds",
 			"The time to receive the first UnixFS node on a GET from the gateway.",
 		),
+		//cids: util.InitCIDS(),
 	}
 	return i, nil
 }
@@ -274,7 +276,7 @@ func parseIpfsPath(p string) (cid.Cid, string, error) {
 
 	// Check the path.
 	rsegs := rootPath.Segments()
-	if rsegs[0] != ipfsPath {
+	if rsegs[0] != "lws" {
 		return cid.Cid{}, "", fmt.Errorf("WritableGateway: only ipfs paths supported")
 	}
 
@@ -481,12 +483,31 @@ func (i *gatewayHandler) servePretty404IfPresent(w http.ResponseWriter, r *http.
 }
 
 func (i *gatewayHandler) postHandler(w http.ResponseWriter, r *http.Request) {
+	//buffer := bytebufferpool.Get()
+	//defer bytebufferpool.Put(buffer)
+	//_, err := buffer.ReadFrom(r.Body)
+	//if err != nil {
+	//	log.Errorf("LAMB: while reading from request body %s", err)
+	//	internalWebError(w, err)
+	//	return
+	//}
+	//f := files.NewBytesFile(buffer.B)
+	//p1, err := i.api.Unixfs().Add(r.Context(), f, options.Unixfs.HashOnly(true))
+	//if err != nil {
+	//	internalWebError(w, err)
+	//	return
+	//}
+	//hasCid := i.cids.HasCid(p1.Cid().String())
+	//if !hasCid {
+	//	log.Debugw("invalid CID coming %s", p1.Cid().String())
+	//	internalWebError(w, invalidCidErr)
+	//	return
+	//}
 	p, err := i.api.Unixfs().Add(r.Context(), files.NewReaderFile(r.Body))
 	if err != nil {
 		internalWebError(w, err)
 		return
 	}
-
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
 	w.Header().Set("IPFS-Hash", p.Cid().String())
 	log.Debugw("CID created, http redirect", "from", r.URL, "to", p, "status", http.StatusCreated)
@@ -731,7 +752,7 @@ func setContentDispositionHeader(w http.ResponseWriter, filename string, disposi
 }
 
 // Set X-Ipfs-Roots with logical CID array for efficient HTTP cache invalidation.
-func (i *gatewayHandler) buildIpfsRootsHeader(contentPath string, r *http.Request) (string, error) {
+func (i *gatewayHandler) buildIpfsRootsHeader(namespace, contentPath string, r *http.Request) (string, error) {
 	/*
 		These are logical roots where each CID represent one path segment
 		and resolves to either a directory or the root block of a file.
@@ -756,8 +777,9 @@ func (i *gatewayHandler) buildIpfsRootsHeader(contentPath string, r *http.Reques
 	*/
 	var sp strings.Builder
 	var pathRoots []string
-	pathSegments := strings.Split(contentPath[6:], "/")
-	sp.WriteString(contentPath[:5]) // /ipfs or /ipns
+
+	pathSegments := strings.Split(contentPath[len(namespace)+2:], "/")
+	sp.WriteString(contentPath[:len(namespace)+1]) // /ipfs or /ipns
 	for _, root := range pathSegments {
 		if root == "" {
 			continue
@@ -1012,7 +1034,7 @@ func handleProtocolHandlerRedirect(w http.ResponseWriter, r *http.Request, logge
 			webError(w, "failed to parse uri query parameter", err, http.StatusBadRequest)
 			return true
 		}
-		if u.Scheme != ipfsPath && u.Scheme != "ipns" {
+		if u.Scheme != "lws" && u.Scheme != "ipns" {
 			webError(w, "uri query parameter scheme must be ipfs or ipns", err, http.StatusBadRequest)
 			return true
 		}
@@ -1060,7 +1082,7 @@ func handleSuperfluousNamespace(w http.ResponseWriter, r *http.Request, contentP
 	}
 
 	// Attempt to fix the superflous namespace
-	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/lamb"))
+	intendedPath := ipath.New(strings.TrimPrefix(r.URL.Path, "/lws"))
 	if err := intendedPath.IsValid(); err != nil {
 		webError(w, "invalid ipfs path", err, http.StatusBadRequest)
 		return true
@@ -1106,7 +1128,7 @@ func (i *gatewayHandler) setCommonHeaders(w http.ResponseWriter, r *http.Request
 	i.addUserHeaders(w) // ok, _now_ write user's headers.
 	w.Header().Set("X-Ipfs-Path", contentPath.String())
 
-	if rootCids, err := i.buildIpfsRootsHeader(contentPath.String(), r); err == nil {
+	if rootCids, err := i.buildIpfsRootsHeader("lws", contentPath.String(), r); err == nil {
 		w.Header().Set("X-Ipfs-Roots", rootCids)
 	} else { // this should never happen, as we resolved the contentPath already
 		return newRequestError("error while resolving X-Ipfs-Roots", err, http.StatusInternalServerError)

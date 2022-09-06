@@ -13,7 +13,7 @@ ENV SRC_DIR /kubo
 # Download packages first so they can be cached.
 COPY go.mod go.sum $SRC_DIR/
 RUN cd $SRC_DIR \
-  && go mod download
+  && GOPROXY=https://goproxy.cn go mod download
 
 COPY . $SRC_DIR
 

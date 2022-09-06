@@ -40,6 +40,9 @@ include $(dir)/Rules.mk
 dir := cmd/ipfs
 include $(dir)/Rules.mk
 
+dir := cmd/tower
+include $(dir)/Rules.mk
+
 # include this file only if coverage target is executed
 # it is quite expensive
 ifneq ($(filter coverage% clean distclean test/unit/gotest.junit.xml,$(MAKECMDGOALS)),)
