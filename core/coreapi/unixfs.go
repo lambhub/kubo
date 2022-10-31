@@ -3,6 +3,9 @@ package coreapi
 import (
 	"context"
 	"fmt"
+	"github.com/ipfs/kubo/core/util"
+	"io"
+	"os"
 	"sync"
 
 	"github.com/ipfs/kubo/core"
@@ -29,6 +32,7 @@ import (
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	options "github.com/ipfs/interface-go-ipfs-core/options"
 	path "github.com/ipfs/interface-go-ipfs-core/path"
+	gopath "path"
 )
 
 type UnixfsAPI CoreAPI
@@ -186,7 +190,7 @@ func (api *UnixfsAPI) Add(ctx context.Context, files files.Node, opts ...options
 		fileAdder.SetMfsRoot(mr)
 	}
 
-	nd, err := fileAdder.AddAllAndPin(ctx, files)
+	nd, tree, err := fileAdder.AddAllAndPin(ctx, files)
 	if err != nil {
 		return nil, err
 	}
@@ -195,9 +199,60 @@ func (api *UnixfsAPI) Add(ctx context.Context, files files.Node, opts ...options
 		if err := api.provider.Provide(nd.Cid()); err != nil {
 			return nil, err
 		}
+		sp := api.nd.SealPath
+		for _, l := range tree.Children {
+			if err := structural(ctx, sp, l.Entry, api); err != nil {
+				return path.IpfsPath(nd.Cid()), err
+			}
+		}
 	}
 
 	return path.IpfsPath(nd.Cid()), nil
+}
+
+func structural(ctx context.Context, prefix string, ent *util.Entry, api *UnixfsAPI) error {
+	if ent == nil {
+		return nil
+	}
+	newPrefix := gopath.Join(prefix, ent.Cid)
+	switch ent.Typ {
+	case util.EntryTyp_Dir:
+		if err := os.MkdirAll(newPrefix, 0777); err != nil {
+			return err
+		}
+	case util.EntryTyp_File:
+		n, err := api.Get(ctx, path.New(ent.Cid))
+		if err != nil {
+			return err
+		}
+		var src files.File
+		switch f := n.(type) {
+		case files.File:
+			src = f
+		case files.Directory:
+			ent.Typ = util.EntryTyp_Dir
+			return structural(ctx, prefix, ent, api)
+		default:
+		}
+		s, _ := src.Size()
+		if s > int64(1<<25) {
+			return nil
+		}
+		to, err := os.OpenFile(newPrefix, os.O_RDWR|os.O_CREATE|os.O_TRUNC, 0777)
+		if err != nil {
+			return err
+		}
+		if _, err = io.Copy(to, src); err != nil {
+			return err
+		}
+	default:
+	}
+	for _, l := range ent.Children {
+		if err := structural(ctx, newPrefix, l.Entry, api); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (api *UnixfsAPI) Get(ctx context.Context, p path.Path) (files.Node, error) {

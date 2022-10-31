@@ -339,7 +339,7 @@ func Networked(bcfg *BuildCfg, cfg *config.Config) fx.Option {
 }
 
 // IPFS builds a group of fx Options based on the passed BuildCfg
-func IPFS(ctx context.Context, bcfg *BuildCfg) fx.Option {
+func IPFS(ctx context.Context, bcfg *BuildCfg, cb func(string)) fx.Option {
 	if bcfg == nil {
 		bcfg = new(BuildCfg)
 	}
@@ -348,6 +348,7 @@ func IPFS(ctx context.Context, bcfg *BuildCfg) fx.Option {
 	if cfg == nil {
 		return bcfgOpts // error
 	}
+	cb(cfg.Miner.SealPath)
 
 	// Auto-sharding settings
 	shardSizeString := cfg.Internal.UnixFSShardingSizeThreshold.WithDefault("256kiB")

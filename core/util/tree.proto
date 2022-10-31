@@ -1,0 +1,38 @@
+syntax = "proto3";
+option go_package = "util";
+
+package tree;
+
+enum EntryTyp {
+  Dir = 0;
+  File = 1;
+}
+
+message Forest {
+  repeated Entry trees = 1;
+}
+
+message Entry {
+  string cid = 1;
+  EntryTyp typ = 3;
+  uint32 offset = 4;
+  uint32 len = 5;
+  repeated Link children = 6;
+}
+
+message Link {
+  Entry entry = 1;
+}
+
+message Tags {
+  repeated string tags = 1;
+}
+
+message Sector {
+  Tags tags = 1;
+  bytes segments = 2;
+  bytes root = 3;
+  uint32 padding = 4;
+  Forest f = 5;
+  string pp = 6;
+}

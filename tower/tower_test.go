@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"github.com/ipfs/kubo/proofDP/math"
 	"github.com/stretchr/testify/require"
 	"testing"
 )
@@ -17,4 +18,11 @@ func Test123(t *testing.T) {
 	require.Nil(t, err)
 	fmt.Println(b2)
 	fmt.Println(bytes.Equal(b1, b2))
+}
+
+func Test234(t *testing.T) {
+	elem, err := math.RandGaloisElem()
+	require.Nil(t, err)
+	fmt.Println(elem.Marshal())
+
 }

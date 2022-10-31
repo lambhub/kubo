@@ -40,13 +40,17 @@ func NewNode(ctx context.Context, cfg *BuildCfg) (*IpfsNode, error) {
 	n := &IpfsNode{
 		ctx: ctx,
 	}
+	var sealPath string
 
 	app := fx.New(
-		node.IPFS(ctx, cfg),
+		node.IPFS(ctx, cfg, func(c string) {
+			sealPath = c
+		}),
 
 		fx.NopLogger,
 		fx.Extract(n),
 	)
+	n.SealPath = sealPath
 
 	var once sync.Once
 	var stopErr error

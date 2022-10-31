@@ -64,9 +64,9 @@ func mainRet() int {
 	}
 	rootCmd.Flags().StringVar(&remoteUrl, "u", "http://18.143.13.243:8545", "web3 url")
 	rootCmd.Flags().Int64VarP(&chainId, "cid", "c", 92001, "chainId")
-	rootCmd.Flags().StringVar(&duaStr, "d", "1m", "duration")
-	rootCmd.Flags().StringVar(&privateKey, "pk", "", "hex format private key")
-	rootCmd.Flags().StringVar(&contractAddr, "ca", "", "hex format contract address")
+	rootCmd.Flags().StringVar(&duaStr, "d", "4m", "duration")
+	rootCmd.Flags().StringVar(&privateKey, "prk", "private key", "hex format private key")
+	rootCmd.Flags().StringVar(&contractAddr, "ca", "contract address", "hex format contract address")
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Print(RED)
 		fmt.Print(err)

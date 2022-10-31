@@ -7,11 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/LambdaIM/proofDP"
 	"github.com/chenzhijie/go-web3"
 	"github.com/ethereum/go-ethereum/common"
 	logging "github.com/ipfs/go-log"
-	"github.com/ipfs/kubo/core/miner"
+	miner2 "github.com/ipfs/kubo/core/miner"
+	"github.com/ipfs/kubo/proofDP"
+	"github.com/ipfs/kubo/proofDP/math"
 	"github.com/minio/highwayhash"
 	"go.uber.org/atomic"
 	"math/big"
@@ -90,8 +91,8 @@ type Ctx struct {
 	Idx     uint64
 }
 
-func (t *Tower) fetchTask() ([]Ctx, error) {
-	contract, err := t.web3.Eth.NewContract(miner.AbsSubmitStr, t.ContractAddr)
+func (t *Tower) fetchTask(expect math.GaloisElem) ([]Ctx, error) {
+	contract, err := t.web3.Eth.NewContract(miner2.AbsSubmitStr, t.ContractAddr)
 	if err != nil {
 		log.Errorf("while web3 new contract %s", err)
 		return nil, err
@@ -118,37 +119,43 @@ func (t *Tower) fetchTask() ([]Ctx, error) {
 	var ans []Ctx
 	log.Infof("⛓ interact with BlockChain, respone: %v", call)
 	// 0xB83e4338AD5eA6Fc0b20a952c8CaDD857349d6F6
+	// Sid
 	// N0jjBs21nA/GqAlrBgwBwZ51d++HhQk/2qAtnWIaQh0fni91DoViuTZb//tLEdstLk9E4lhtFxDe0EfyllamTZ3jo88ULBrLjZ76hai2N+X8p7l1Tr+FTC53vAiIIu8vWosXRM2dOH6owZ8e+njAFSvj8/Mo9rItwuP4ee8c8r4=,lOxdk8NPdzEZgUjUgqL6bfgrIdEsvujXEn+7UhPIb/w6+QKNJJ1moX81SrHr9RCGySJHnzpr6j6gm++XmblDnF23IXF2Q1DtqiMcwBukyVBA3JRKQbq2O7G6k0kyjqxiYsvOyIq1q/6AbB1lGnuAcdd+h5dOm4dBuTUlKkWyu+E=,UyuxJO8IAvIinazQcqosU/i7OiK1KTj2bvwEL4cMn2Z2P72lKxybSm9ajICMEguGPjBQcZHfiScDKrlA54wASpGH02Z/03Yx/RDZjqLJRD/xykn5JYtPf4thhoF9ME3o/UL2RSth6cpza9ExAuOBRdaVRRH3kl0s78HTmqgWlbY=
 	// 4b1659fe622a85adc54398bbc1cf8f0863deed9a7de600bd72bfd1293335d0d6
 	// NzE0,P8FXoACMXL4v/aE7VNwi+6VkcDg=
 	// EJQPhhpywLi4B11loJqCejIE3jY=,CMQzLmLBnnj2VZzG/yN+Kg5F5oSZ7EYWWiIaj6MgzA7Npfnp680Aw4KIkb3/u5P87ClmZG6sWyXQ2vANC+wkDR3SDBqOiLb0MTq8a/HDnlyvl6tFwW3/wq33pX5BkzxCelS35QG1iJbOOhpethLsUjm8Jc1icJ4HO1dOBXI59ik=,M9LDi0vIQ2PMbAgT8/COjhFTVVcgc3ZUInK1WXTSm2kY8SmLF0+Yf0+iFrfnzZAY2bcLwWjvnyKJylhUrRyL2h7lhL9SrZgSzAbgXapej/Z+uxpUizLEmg0d4kp8vf0XmGZvynXYAoL3ybhPLecfuPsQFFu0Lbclo4PRxRPl/OE=
 	for _, str := range strs {
-		split := strings.SplitN(str, " ", 5)
-		if len(split) != 5 {
+		split := strings.SplitN(str, " ", 6)
+		if len(split) != 6 {
 			return nil, errors.New("expect message with 5 space")
 		}
 		// ==== 0xB83e4338AD5eA6Fc0b20a952c8CaDD857349d6F6 => b83e4338ad5ea6fc0b20a952c8cadd857349d6f6
 		address := common.HexToAddress(split[0])
 		log.Debugf("addr byte %v", address)
-		publicParams, err := proofDP.ParsePublicParams(split[1])
+		// skip sid
+		publicParams, err := proofDP.ParsePublicParams(split[2])
 		if err != nil {
 			log.Errorf("while parse pp %s: %s", split[1], err)
 			return nil, err
 		}
 		var root [32]byte
 		log.Debugf("root hex %s", split[2])
-		nroot, err := hex.DecodeString(split[2])
+		nroot, err := hex.DecodeString(split[3])
 		if err != nil {
 			log.Errorf("while parse sha256 %s: %s", split[2], err)
 			return nil, err
 		}
 		copy(root[:], nroot[:32])
-		chal, err := proofDP.ParseChal(split[3])
+		chal, err := proofDP.ParseChal(split[4])
 		if err != nil {
 			log.Errorf("while parse chal %s: %s", split[3], err)
 			return nil, err
 		}
-		chalRaw := strings.SplitN(split[3], ",", 2)
+		if !expect.Equal(chal.GetNum()) {
+			log.Warnf("unexpect challege %s", chal.Marshal())
+			continue
+		}
+		chalRaw := strings.SplitN(split[4], ",", 2)
 		if len(chalRaw) != 2 {
 			log.Errorf("while parse raw chal with `,` %s: %s", split[3], err)
 			return nil, errors.New("invalid challenge")
@@ -163,7 +170,7 @@ func (t *Tower) fetchTask() ([]Ctx, error) {
 			log.Errorf("while str to num %s: %s", string(numInStr), err)
 			return nil, err
 		}
-		proof, err := proofDP.ParseProof(split[4])
+		proof, err := proofDP.ParseProof(split[5])
 		if err != nil {
 			log.Errorf("while parse proof %s: %s", split[4], err)
 			return nil, err
@@ -186,7 +193,7 @@ func (t *Tower) verifyCallback(set map[common.Address]struct{}) error {
 	for k, _ := range set {
 		ans = append(ans, k)
 	}
-	contract, err := t.web3.Eth.NewContract(miner.AbsSubmitStr, t.ContractAddr)
+	contract, err := t.web3.Eth.NewContract(miner2.AbsSubmitStr, t.ContractAddr)
 	if err != nil {
 		log.Errorf("while web3 new contract %s", err)
 		return err
@@ -231,10 +238,28 @@ func (t *Tower) stepVerify() {
 		log.Warnf("busy verifying")
 		return
 	}
-	tasks, err := t.fetchTask()
+
+	challenge, err := t.getChallenge()
+	if err != nil {
+		log.Errorf("while get challenge: %s", err)
+		return
+	}
+	if err := t.closeSubmit(); err != nil {
+		log.Errorf("while close submit: %s", err)
+		return
+	}
+	galoisElem, err := math.ParseGaloisElem(challenge)
+	if err != nil {
+		log.Errorf("while parse challenge: %s", err)
+		return
+	}
+	tasks, err := t.fetchTask(galoisElem)
 	if err != nil {
 		log.Errorf("while fetching tasks: %s", err)
 		return
+	}
+	if err := t.setChallenge(); err != nil {
+		log.Errorf("while set seed: %s", err)
 	}
 	chunkSize := (len(tasks) + t.concurrent - 1) / t.concurrent
 	log.Infof("🔭 verify len(%d), chunk len(%d)", len(tasks), chunkSize)
@@ -255,7 +280,7 @@ func (t *Tower) stepVerify() {
 			go func(ctx Ctx) {
 				defer w.Done()
 				log.Infof("verify %s", hex.EncodeToString(ctx.Address[:]))
-				idx := highwayhash.Sum64(ctx.Address.Bytes(), ctx.Sha[:]) % uint64(miner.Segments)
+				idx := highwayhash.Sum64(ctx.Address.Bytes(), ctx.Sha[:]) % uint64(miner2.SegmentNum)
 				if idx != ctx.Idx {
 					log.Errorf("while verify index, expect: %d, but: %d", idx, ctx.Idx)
 					return
@@ -270,10 +295,7 @@ func (t *Tower) stepVerify() {
 		}
 		w.Wait()
 	}
-	if err = t.closeSubmit(); err != nil {
-		log.Errorf("while close submit: %s", err)
-		return
-	}
+
 	if err := t.verifyCallback(set); err != nil {
 		log.Errorf("while call verify method: %s", err)
 	} else if len(set) == 0 {
@@ -281,8 +303,32 @@ func (t *Tower) stepVerify() {
 	}
 }
 
+func (t *Tower) openSubmit() error {
+	contract, err := t.web3.Eth.NewContract(miner2.AbsSubmitStr, t.ContractAddr)
+	if err != nil {
+		log.Errorf("while web3 new contract %s", err)
+		return err
+	}
+	// ================================================
+	nmths := contract.Methods("openSubmit")
+	ndata := nmths.ID
+	tokenAddress := common.HexToAddress(t.ContractAddr)
+	_, err = t.web3.Eth.SyncSendRawTransaction(
+		tokenAddress,
+		big.NewInt(0),
+		1000000,
+		t.web3.Utils.ToGWei(100),
+		ndata,
+	)
+	if err != nil {
+		log.Errorf("while calling closeSubmit: %s", err)
+		return err
+	}
+	return nil
+}
+
 func (t *Tower) closeSubmit() error {
-	contract, err := t.web3.Eth.NewContract(miner.AbsSubmitStr, t.ContractAddr)
+	contract, err := t.web3.Eth.NewContract(miner2.AbsSubmitStr, t.ContractAddr)
 	if err != nil {
 		log.Errorf("while web3 new contract %s", err)
 		return err
@@ -303,4 +349,56 @@ func (t *Tower) closeSubmit() error {
 		return err
 	}
 	return nil
+}
+
+func (t *Tower) setChallenge() error {
+	elem, err := math.RandGaloisElem()
+	if err != nil {
+		return err
+	}
+	contract, err := t.web3.Eth.NewContract(miner2.AbsSubmitStr, t.ContractAddr)
+	if err != nil {
+		return err
+	}
+	mth := contract.Methods("setSeed")
+	data := mth.ID
+	name, err := contract.Methods("setSeed").Inputs.Pack(elem.Marshal())
+	if err != nil {
+		log.Errorf("while pack param: %s", err)
+		return err
+	}
+	data = append(data, name...)
+	tokenAddress := common.HexToAddress(t.ContractAddr)
+	txHash, err := t.web3.Eth.SyncSendRawTransaction(
+		tokenAddress,
+		big.NewInt(0),
+		1050000,
+		t.web3.Utils.ToGWei(100),
+		data,
+	)
+	if err != nil {
+		log.Infof("⛓️ Function: setChallenge,while interacting with BlockChain, error: %s", err)
+	} else {
+		marshal, err := json.Marshal(txHash)
+		if err != nil {
+			log.Infof("⛓️ Function: setChallenge,while interacting BlockChain, error: %s", err)
+		}
+		log.Infof("⛓ Function: setChallenge,while interacting BlockChain, respone: %s", string(marshal))
+	}
+	return err
+}
+
+func (t *Tower) getChallenge() (string, error) {
+	contract, err := t.web3.Eth.NewContract(miner2.AbsSubmitStr, t.ContractAddr)
+	if err != nil {
+		return "", err
+	}
+	call, err := contract.Call(t.web3.Eth.Address(), "getSeed")
+	if err != nil {
+		log.Errorf("⛓️ getSeed with BlockChain, error: %s", err)
+		return "", err
+	}
+	challenge := fmt.Sprintf("%s", call)
+	log.Infof("#### getSeed %s", challenge)
+	return challenge, nil
 }

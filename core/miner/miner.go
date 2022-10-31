@@ -53,6 +53,7 @@ type Miner struct {
 	cli         *cli
 }
 
+// Deprecated: NewMiner
 func NewMiner(ctx context.Context, cfg config.Config) (miner *Miner, err error) {
 	miner = &Miner{
 		ctx:         ctx,
@@ -157,7 +158,8 @@ var (
 			return sha256.New()
 		},
 	}
-	salt = [32]byte{1, 9, 0, 0, 1, 9, 9, 0, 2, 0, 0, 0, 2, 0, 1, 0, 2, 0, 1, 9, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 2, 2}
+	salt   = [32]byte{1, 9, 0, 0, 1, 9, 9, 0, 2, 0, 0, 0, 2, 0, 1, 0, 2, 0, 1, 9, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 2, 2}
+	saltV2 = [32]byte{0, 2, 0, 1, 9, 2, 0, 2, 0, 2, 0, 2, 1, 2, 0, 2, 2, 1, 9, 0, 0, 1, 9, 9, 0, 2, 0, 0, 0, 2, 0, 1}
 )
 
 func getHasher() hash.Hash {
@@ -462,7 +464,6 @@ func (m *Miner) proof(f *os.File) error {
 		log.Errorf("while building tree, branch 2, len(%d): %s", Segments, err)
 		return err
 	}
-	m.cli.webCli.Eth.Address()
 	idx := highwayhash.Sum64(m.cli.webCli.Eth.Address().Bytes(), tree.MerkleRoot()) % uint64(Segments)
 	//log.Debugf("select idx %d", idx)
 	return m.submitProof(pps[idx].Marshal(), chals[idx].Marshal(), proofs[idx].Marshal(), tree.MerkleRoot())

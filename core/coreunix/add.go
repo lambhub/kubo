@@ -1,9 +1,11 @@
 package coreunix
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ipfs/kubo/core/util"
 	"io"
 	gopath "path"
 	"strconv"
@@ -25,6 +27,7 @@ import (
 	coreiface "github.com/ipfs/interface-go-ipfs-core"
 	"github.com/ipfs/interface-go-ipfs-core/path"
 	"github.com/ipfs/kubo/tracing"
+	"github.com/valyala/bytebufferpool"
 )
 
 var log = logging.Logger("coreunix")
@@ -186,24 +189,30 @@ func (adder *Adder) PinRoot(ctx context.Context, root ipld.Node) error {
 	return adder.pinning.Flush(ctx)
 }
 
-func (adder *Adder) outputDirs(path string, fsn mfs.FSNode) error {
+func (adder *Adder) outputDirs(path string, fsn mfs.FSNode, ent *util.Entry, lvl int) error {
+	node, _ := fsn.GetNode()
+	cidStr := node.Cid().String()
 	switch fsn := fsn.(type) {
 	case *mfs.File:
+		leaf := util.InsertIncrement(ent, cidStr)
+		leaf.Typ = util.EntryTyp_File
+		//fmt.Printf("##### level %d, file cid %s\n", lvl, node.Cid().String())
 		return nil
 	case *mfs.Directory:
+		//fmt.Printf("##### level %d, dir cid %s\n", lvl, node.Cid().String())
 		names, err := fsn.ListNames(adder.ctx)
 		if err != nil {
 			return err
 		}
-
+		newEnt := util.InsertIncrement(ent, cidStr)
+		newEnt.Typ = util.EntryTyp_Dir
 		for _, name := range names {
 			child, err := fsn.Child(name)
 			if err != nil {
 				return err
 			}
-
 			childpath := gopath.Join(path, name)
-			err = adder.outputDirs(childpath, child)
+			err = adder.outputDirs(childpath, child, newEnt, lvl+1)
 			if err != nil {
 				return err
 			}
@@ -258,7 +267,7 @@ func (adder *Adder) addNode(node ipld.Node, path string) error {
 }
 
 // AddAllAndPin adds the given request's files and pin them.
-func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Node, error) {
+func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Node, util.Entry, error) {
 	ctx, span := tracing.Span(ctx, "CoreUnix.Adder", "AddAllAndPin")
 	defer span.End()
 
@@ -272,13 +281,13 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 	}()
 
 	if err := adder.addFileNode(ctx, "", file, true); err != nil {
-		return nil, err
+		return nil, util.Entry{}, err
 	}
 
 	// get root
 	mr, err := adder.mfsRoot()
 	if err != nil {
-		return nil, err
+		return nil, util.Entry{}, err
 	}
 	var root mfs.FSNode
 	rootdir := mr.GetDirectory()
@@ -286,7 +295,7 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 
 	err = root.Flush()
 	if err != nil {
-		return nil, err
+		return nil, util.Entry{}, err
 	}
 
 	// if adding a file without wrapping, swap the root to it (when adding a
@@ -296,48 +305,54 @@ func (adder *Adder) AddAllAndPin(ctx context.Context, file files.Node) (ipld.Nod
 	if !dir {
 		children, err := rootdir.ListNames(adder.ctx)
 		if err != nil {
-			return nil, err
+			return nil, util.Entry{}, err
 		}
 
 		if len(children) == 0 {
-			return nil, fmt.Errorf("expected at least one child dir, got none")
+			return nil, util.Entry{}, fmt.Errorf("expected at least one child dir, got none")
 		}
 
 		// Replace root with the first child
 		name = children[0]
 		root, err = rootdir.Child(name)
 		if err != nil {
-			return nil, err
+			return nil, util.Entry{}, err
 		}
 	}
 
 	err = mr.Close()
 	if err != nil {
-		return nil, err
+		return nil, util.Entry{}, err
 	}
 
 	nd, err := root.GetNode()
 	if err != nil {
-		return nil, err
+		return nil, util.Entry{}, err
 	}
 
+	tree := util.Entry{}
+
 	// output directory events
-	err = adder.outputDirs(name, root)
+	err = adder.outputDirs(name, root, &tree, 0)
 	if err != nil {
-		return nil, err
+		return nil, util.Entry{}, err
 	}
+
+	//t, _ := json.MarshalIndent(tree, "", "\t")
+
+	//fmt.Printf("#### %s\n", string(t))
 
 	if asyncDagService, ok := adder.dagService.(syncer); ok {
 		err = asyncDagService.Sync()
 		if err != nil {
-			return nil, err
+			return nil, util.Entry{}, err
 		}
 	}
 
 	if !adder.Pin {
-		return nd, nil
+		return nd, tree, nil
 	}
-	return nd, adder.PinRoot(ctx, nd)
+	return nd, tree, adder.PinRoot(ctx, nd)
 }
 
 func (adder *Adder) addFileNode(ctx context.Context, path string, file files.Node, toplevel bool) error {
@@ -371,6 +386,7 @@ func (adder *Adder) addFileNode(ctx context.Context, path string, file files.Nod
 	case *files.Symlink:
 		return adder.addSymlink(path, f)
 	case files.File:
+
 		return adder.addFile(path, f)
 	default:
 		return errors.New("unknown file type")
@@ -405,8 +421,11 @@ func (adder *Adder) addFile(path string, file files.File) error {
 			reader = rdr
 		}
 	}
-
-	dagnode, err := adder.add(reader)
+	b := bytebufferpool.Get()
+	b.Reset()
+	buffer := bytes.NewBuffer(b.Bytes())
+	defer bytebufferpool.Put(b)
+	dagnode, err := adder.add(io.TeeReader(reader, buffer))
 	if err != nil {
 		return err
 	}

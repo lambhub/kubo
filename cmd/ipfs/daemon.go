@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"errors"
 	_ "expvar"
 	"fmt"
+	"github.com/ipfs/kubo/core/miner"
 	"net"
 	"net/http"
 	_ "net/http/pprof"
@@ -432,10 +434,12 @@ func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment
 		fmt.Println("Swarm is limited to private network of peers with the swarm key")
 		fmt.Printf("Swarm key fingerprint: %x\n", node.PNetFingerprint)
 	}
+	ctx, cancelFunc := context.WithCancel(context.TODO())
 
 	printSwarmAddrs(node)
 
 	defer func() {
+		cancelFunc()
 		// We wait for the node to close first, as the node has children
 		// that it will wait for before closing, such as the API server.
 		node.Close()
@@ -544,16 +548,27 @@ func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment
 			cfg, err := cctx.GetConfig()
 			if err != nil {
 				log.Errorf("failed to access config: %s", err)
-			}
-			if len(cfg.Bootstrap) == 0 && len(cfg.Peering.Peers) == 0 {
-				// Skip peer check if Bootstrap and Peering lists are empty
-				// (means user disabled them on purpose)
-				log.Warn("skipping bootstrap: empty Bootstrap and Peering lists")
+				log.Warn("⚠️ miner is offline")
 				return
 			}
 			ipfs, err := coreapi.NewCoreAPI(node)
 			if err != nil {
 				log.Errorf("failed to access CoreAPI: %v", err)
+				log.Warn("⚠️ miner is offline")
+				return
+			}
+			m, err := miner.NewMinerV2(ctx, *cfg, ipfs)
+			if err != nil {
+				log.Errorf("miner offline: %s", err)
+			}
+			log.Infof("miner had been started.")
+			m.Start()
+
+			if len(cfg.Bootstrap) == 0 && len(cfg.Peering.Peers) == 0 {
+				// Skip peer check if Bootstrap and Peering lists are empty
+				// (means user disabled them on purpose)
+				log.Warn("skipping bootstrap: empty Bootstrap and Peering lists")
+				return
 			}
 			peers, err := ipfs.Swarm().Peers(cctx.Context())
 			if err != nil {
@@ -564,6 +579,8 @@ func daemonFunc(req *cmds.Request, re cmds.ResponseEmitter, env cmds.Environment
 			}
 		})
 
+	} else {
+		log.Infof("⚠️ miner is offline")
 	}
 
 	// Hard deprecation notice if someone still uses IPFS_REUSEPORT

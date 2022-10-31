@@ -107,13 +107,14 @@ func InitWithIdentity(identity Identity) (*Config, error) {
 			Keep:            "",
 		},
 		Miner: Miner{
-			RemoteURL:    "http://18.143.13.243:8545",
-			Delay:        10,
-			Record:       filepath.Join(bestKnownPath, "miner-record"),
-			SealPath:     filepath.Join(bestKnownPath, "miner-seal"),
-			PrivateKey:   "9ef1ab2d179cf1ccef1826bfd14c9f3ba6f17910b891a2f04c7af178f306a731",
-			ContractAddr: "0x270299Bf2A8793EaA5597dfC2741C46C36E330da",
-			ChainID:      92001,
+			RemoteURL:          "http://18.143.13.243:8545",
+			Delay:              10,
+			Record:             filepath.Join(bestKnownPath, "miner-record"),
+			SealPath:           filepath.Join(bestKnownPath, "miner-seal"),
+			PrivateKey:         "9ef1ab2d179cf1ccef1826bfd14c9f3ba6f17910b891a2f04c7af178f306a731",
+			ContractAddr:       "0x270299Bf2A8793EaA5597dfC2741C46C36E330da",
+			FilterContractAddr: "0xc1Acc49C68648457A943e07929f19df8ba113a6C",
+			ChainID:            92001,
 		},
 	}
 
